@@ -12,7 +12,7 @@ st.subheader("التحليل المدعوم بالذكاء الاصطناعي ل
 CLIENT_ID = "268965"
 CLIENT_SECRET = "6a94357c4df6f6d743a72a885a13d132ca911ec1"
 
-"
+
 REDIRECT_URI = "https://jordan-ai-sports-4n5tndhgkesysquygzwyhg.streamlit.app/"
 
 # دالة لإنشاء رابط المصادقة
