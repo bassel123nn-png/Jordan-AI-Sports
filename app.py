@@ -1,3 +1,42 @@
+import pandas as pd
+import numpy as np
+import streamlit as st
+
+def evaluate_dynamic_readiness(historical_scores, current_score, window=7):
+    """
+    تقوم هذه الدالة بحساب منطقة الأمان للاعب بناءً على بياناته السابقة.
+    historical_scores: قائمة بتقييمات اللاعب في الأيام السابقة (مثلاً آخر 14 يوماً)
+    current_score: التقييم الذي أدخله اللاعب اليوم
+    window: عدد الأيام التي سيتم حساب الانحراف المعياري بناءً عليها (الافتراضي 7 أيام)
+    """
+    # إذا لم يكن هناك بيانات كافية (لاعب جديد)، نستخدم العتبات الثابتة مؤقتاً
+    if len(historical_scores) < 3:
+        return "غير كافٍ", None, None, None
+
+    # تحويل البيانات إلى بانداز لتسهيل العمليات الحسابية
+    scores_series = pd.Series(historical_scores)
+    
+    # حساب المتوسط الحسابي (Mean) والانحراف المعياري (Std) لآخر X أيام
+    mean_score = scores_series.tail(window).mean()
+    std_score = scores_series.tail(window).std()
+    
+    # في حال كانت التقييمات السابقة كلها متطابقة (الانحراف = 0)، نعطي قيمة صغيرة لتجنب الأخطاء
+    if std_score == 0:
+        std_score = 0.1
+        
+    # تحديد منطقة الأمان (المتوسط ± 0.5 الانحراف المعياري)
+    safe_lower_bound = mean_score - (0.5 * std_score)
+    safe_upper_bound = mean_score + (0.5 * std_score)
+    
+    # شجرة القرارات الديناميكية (Decision Engine)
+    if current_score < safe_lower_bound:
+        status = "🔴 إنذار خطر: انخفاض حاد عن المعدل المعتاد (يُنصح بتقليل الحمل)"
+    elif current_score > safe_upper_bound:
+        status = "🟢 جاهزية ممتازة: استشفاء اللاعب أعلى من المعتاد (يمكن زيادة الحمل)"
+    else:
+        status = "🟡 ضمن منطقة الأمان: اللاعب في حالته الطبيعية المعتادة (حمل تدريبي اعتيادي)"
+        
+    return status, mean_score, safe_lower_bound, safe_upper_bound
 import streamlit as st
 import requests
 import pandas as pd
