@@ -4,7 +4,7 @@ import pandas as pd
 import urllib.parse
 from datetime import datetime
 
-# إعدادات الصفحة - استخدمنا وضع الشاشة العريضة للرسوم البيانية
+# إعدادات الصفحة
 st.set_page_config(page_title="Overtraining AI Predictor", page_icon="🏃‍♂️", layout="wide")
 st.title("نظام التنبؤ بالإرهاق الرياضي 🇯🇴")
 st.subheader("التحليل المدعوم بالذكاء الاصطناعي لبيانات الرياضيين")
@@ -25,52 +25,41 @@ def create_oauth_url():
     }
     return f"{auth_url}?{urllib.parse.urlencode(params)}"
 
-# 1. قسم النظام في حال وجود البيانات
 if "access_token" in st.session_state:
     access_token = st.session_state["access_token"]
     athlete_name = st.session_state["athlete_name"]
     
     st.success(f"مرحباً كابتن {athlete_name}! تم سحب بياناتك بنجاح.")
     
-    # سحب البيانات لآخر 7 تمارين لبناء الرسم البياني
     activities_url = "https://www.strava.com/api/v3/athlete/activities"
     header = {'Authorization': 'Bearer ' + access_token}
     param = {'per_page': 7, 'page': 1} 
     dataset = requests.get(activities_url, headers=header, params=param).json()
     df = pd.json_normalize(dataset)
     
-    # هندسة الميزات (Feature Engineering)
     cols_to_keep = ['name', 'start_date_local', 'distance', 'moving_time', 'average_heartrate']
     existing_cols = [col for col in cols_to_keep if col in df.columns]
     df_final = df[existing_cols].copy()
     
     if 'moving_time' in df_final.columns and 'average_heartrate' in df_final.columns:
         df_final['Duration (mins)'] = round(df_final['moving_time'] / 60, 2)
-        # حساب حمل التدريب (TRIMP)
         df_final['TRIMP'] = round((df_final['Duration (mins)'] * df_final['average_heartrate']) / 100, 1)
-        # تجهيز التاريخ للرسم البياني
         df_final['Date'] = pd.to_datetime(df_final['start_date_local']).dt.date
         
     if 'distance' in df_final.columns:
         df_final['Distance (km)'] = round(df_final['distance'] / 1000, 2)
         
-    # --- قسم الرسوم البيانية للمدرب (Data Visualization) ---
     st.divider()
     st.header("📊 لوحة تحكم المدرب: السجل التاريخي لأحمال التدريب")
-    st.write("يوضح هذا الرسم البياني تدرج الأحمال التدريبية (TRIMP) للاعب في التمارين الأخيرة، مما يساعد المدرب على رؤية الإرهاق التراكمي بوضوح:")
     
     if 'TRIMP' in df_final.columns:
-        # ترتيب البيانات زمنياً من الأقدم للأحدث للرسم البياني
         chart_data = df_final[['Date', 'TRIMP']].sort_values(by='Date').set_index('Date')
         st.bar_chart(chart_data)
         
-    st.write("التفاصيل الرقمية لأحدث التمارين:")
     st.dataframe(df_final[['name', 'Date', 'Duration (mins)', 'average_heartrate', 'TRIMP']])
     
-    # --- قسم التقييم اليومي (Subjective Data) ---
     st.divider()
     st.header("التقييم اليومي للجاهزية")
-    st.write("يرجى إدخال الحالة النفسية والجسدية للاعب اليوم:")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -80,34 +69,66 @@ if "access_token" in st.session_state:
         stress = st.slider("مستوى التوتر (1 ضغط - 10 مرتاح)", 1, 10, 5)
         mood = st.slider("المزاج العام (1 سيء - 10 ممتاز)", 1, 10, 5)
         
-    # --- العقل المدبر: دمج البيانات (Data Fusion & AI Logic) ---
+    # --- العقل المدبر: التحليل الدقيق (Granular Analysis) ---
     if st.button("تحليل الجاهزية واتخاذ القرار 🧠"):
-        subjective_score = sleep + soreness + stress + mood
-        
-        # استخراج بيانات آخر تمرين وحساب الفجوة الزمنية
         latest_trimp = df_final.iloc[0]['TRIMP'] if not df_final.empty and 'TRIMP' in df_final.columns else 0
-        latest_date_str = df_final.iloc[0]['start_date_local']
-        latest_date = pd.to_datetime(latest_date_str).tz_localize(None)
-        days_since_last_workout = (pd.Timestamp.now() - latest_date).days
+        latest_date_str = df_final.iloc[0]['start_date_local'] if not df_final.empty else None
         
-        st.subheader("نتائج دمج البيانات (Data Fusion):")
-        st.info(f"آخر تمرين كان منذ: **{days_since_last_workout} أيام** | حمل التدريب السابق (TRIMP): **{latest_trimp}** | التقييم الذاتي: **{subjective_score}/40**")
-        
-        # خوارزمية اتخاذ القرار
-        if days_since_last_workout > 7:
-            if subjective_score >= 25:
-                st.success("🟢 قرار النظام: اللاعب لم يتدرب منذ فترة (الإرهاق التراكمي = 0) وحالته النفسية ممتازة. جاهز للعودة بحمل تدريبي عالي.")
-            else:
-                st.warning("🟡 قرار النظام: اللاعب لم يتدرب منذ فترة ولكن تقييمه الذاتي منخفض (توتر/قلة نوم). يُنصح بتمارين خفيفة (Active Recovery) للتهيئة.")
+        if latest_date_str:
+            latest_date = pd.to_datetime(latest_date_str).tz_localize(None)
+            days_since_last_workout = (pd.Timestamp.now() - latest_date).days
         else:
-            if latest_trimp > 30 and subjective_score < 20:
-                st.error("🔴 قرار النظام: خطر الإرهاق والإصابة عالي جداً! (حمل سابق مرتفع + عدم تعافي ذاتي). يُنصح بالراحة التامة فوراً.")
-            elif latest_trimp > 30 and subjective_score >= 20:
-                st.warning("🟡 قرار النظام: حالة مقبولة. اللاعب يتعافى جيداً من الجهد السابق. يُنصح بتمرين متوسط الشدة اليوم.")
+            days_since_last_workout = 9999
+            
+        st.subheader("نتائج دمج البيانات والتحليل الذكي:")
+        st.info(f"آخر تمرين كان منذ: **{days_since_last_workout} أيام** | حمل التدريب السابق (TRIMP): **{latest_trimp}**")
+        
+        # مصفوفة الأخطاء والملاحظات
+        flags = []
+        
+        # 1. تحليل الألم العضلي مع الزمن
+        if soreness <= 4:
+            if days_since_last_workout > 14:
+                flags.append("⚠️ **ألم عضلي غير مبرر رياضياً:** آخر تمرين كان قبل فترة طويلة جداً. قد يكون هذا الألم نتيجة مجهود بدني خارج التدريب الرياضي أو بداية إصابة. (يُنصح بالحذر).")
             else:
-                st.success("🟢 قرار النظام: جاهزية ممتازة. الحمل التراكمي آمن والتعافي الذاتي ممتاز. جاهز لكسر الأرقام بحمل عالي.")
+                flags.append("⚠️ **إجهاد عضلي:** العضلات لم تتعافَ بشكل كامل من التدريبات السابقة.")
+                
+        # 2. تحليل جودة النوم
+        if sleep <= 4:
+            flags.append("⚠️ **نقص جودة النوم:** التعافي الجسدي وإصلاح الأنسجة غير مكتمل.")
+            
+        # 3. تحليل الجانب النفسي والعصبي
+        if stress <= 4:
+            flags.append("⚠️ **ضغط نفسي عالي (توتر):** التدريب العنيف اليوم قد يؤدي إلى إرهاق الجهاز العصبي المركزي (CNS Fatigue).")
+        if mood <= 4:
+            flags.append("⚠️ **مزاج عام سيء:** قد يؤثر بشكل مباشر على التركيز والأداء الحركي أثناء التمرين.")
 
-# 2. المصادقة واستقبال الكود
+        # --- محرك اتخاذ القرار (Decision Engine) ---
+        if not flags:
+            if days_since_last_workout > 7:
+                st.success("🟢 **قرار النظام:** الجاهزية الجسدية والنفسية ممتازة (100%). نظراً للانقطاع، يُنصح بالعودة بحمل تدريبي تصاعدي لتجنب صدمة العضلات المفاجئة.")
+            elif latest_trimp > 30:
+                st.success("🟢 **قرار النظام:** بالرغم من أن التمرين السابق كان شاقاً، إلا أن مؤشرات التعافي الذاتي لديك ممتازة جداً. أنت جاهز للمنافسة بحمل عالي اليوم!")
+            else:
+                st.success("🟢 **قرار النظام:** جاهزية تامة ومثالية. يمكنك أداء أي تمرين تخطط له بأمان تام.")
+        else:
+            if days_since_last_workout > 7:
+                st.warning("🟡 **قرار النظام:** جسدك مستريح رياضياً، لكن هناك عوائق حالية تمنع الأداء المثالي:")
+                for flag in flags:
+                    st.write(flag)
+                st.write("**التوصية:** تمارين خفيفة جداً (Active Recovery) حتى تتحسن المؤشرات السلبية.")
+            else:
+                if latest_trimp > 30:
+                    st.error("🔴 **خطر الإرهاق العالي (Overtraining Risk)!** حمل التمرين السابق كان مرتفعاً، وجسدك يرسل إشارات تحذيرية واضحة:")
+                    for flag in flags:
+                        st.write(flag)
+                    st.write("**التوصية:** راحة سلبية تامة فوراً. تجاهل هذه الإشارات قد يؤدي إلى إصابة مؤكدة.")
+                else:
+                    st.warning("🟡 **قرار النظام:** مستوى الجاهزية متأثر بالمؤشرات التالية، ويحتاج إلى تعديل في خطة التدريب:")
+                    for flag in flags:
+                        st.write(flag)
+                    st.write("**التوصية:** تمرين متوسط الشدة مع تقليل المدة الزمنية والتركيز العالي على الإحماء.")
+
 elif "code" in st.query_params:
     auth_code = st.query_params["code"]
     token_url = "https://www.strava.com/oauth/token"
@@ -128,7 +149,6 @@ elif "code" in st.query_params:
     else:
         st.error("الكود منتهي الصلاحية، يرجى العودة للرابط الأساسي والمحاولة.")
 
-# 3. واجهة البداية
 else:
     st.info("للبدء، يرجى ربط حسابك لسحب البيانات التدريبية بشكل آمن:")
     st.link_button("Connect with Strava 🔗", create_oauth_url())
